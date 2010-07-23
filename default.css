@@ -1,0 +1,30 @@
+body {
+	margin:0;
+	font-size:10px;
+}
+#rootElement {
+	background-color:#ccc;
+	position:absolute;
+	top:0;
+	left:0;
+	right:0;
+	bottom:0;
+}
+/*.sprite {
+	background-color:#666;
+	-moz-border-radius:5px;
+}*/
+.node {
+	background-color:#fff;
+	width:10px;
+	height:10px;
+	-moz-border-radius:5px;
+}
+.obstacle {
+	background-color:#666;
+	-moz-border-radius:5px;
+}
+#title {
+	position:relative;
+	z-index:1000;
+}
