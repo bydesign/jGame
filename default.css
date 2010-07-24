@@ -10,16 +10,6 @@ body {
 	right:0;
 	bottom:0;
 }
-/*.sprite {
-	background-color:#666;
-	-moz-border-radius:5px;
-}*/
-.node {
-	background-color:#fff;
-	width:10px;
-	height:10px;
-	-moz-border-radius:5px;
-}
 .obstacle {
 	background-color:#666;
 	-moz-border-radius:5px;
@@ -27,4 +17,17 @@ body {
 #title {
 	position:relative;
 	z-index:1000;
+}
+.debug .group {
+	background-color:#fff;
+	width:3px;
+	height:3px;
+	-moz-border-radius:2px;
+}
+.debug .sprite {
+	border: solid 1px blue;
+}
+.debug .obstacle {
+	color:#fff;
+	-moz-border-radius:0;
 }

@@ -10,21 +10,35 @@ var UP = 38;
 var RIGHT = 39;
 var DOWN = 40;
 
+// directions
+var TOP = 0,
+	RIGHT = 1,
+	BOTTOM = 2,
+	LEFT = 3;
+
 var FRAMERATE = 33;	// framerate in milliseconds (50=20fps, 33=30fps)
 var GRAVITY = 7;
 
+var DEBUG = true;
+var SHOWOBJECTNAMES = DEBUG;
 
 function jGame(rootElement, options) {
+	this.scene = new jGame.Scene(rootElement, this);
+	this.scene.rootGroup = new jGame.Group('root', {x:0, y:0, z:0, scene:this.scene});
 	this.trackKeyPresses = options.trackKeyPresses;
-	this.scene = new jGame.Scene(rootElement);
-	this.scene.rootNode = new jGame.Node('root', {x:0, y:0, z:0, scene:this.scene});
 	this.interval = null;
+	this.states = {};
+	
+	this.addState = function(str, num) {
+		this.states[num] = str;
+	}
 	
 	this.start = function() {
 		var game = this;
 		this.interval = setInterval(function() {
-			game.scene.tick();
+			game.scene.doTick();
 		}, FRAMERATE);
+		if (DEBUG) $('body').addClass('debug');
 	}
 	
 	this.pause = function() {
@@ -43,6 +57,14 @@ function jGame(rootElement, options) {
 			game.keyTracker[event.keyCode] = false;
 		});
 	}
+	
+	// handle mouse clicks and delegate them to corresponding entity
+	var game = this;
+	rootElement.click(function(event) {
+		var sprite = game.scene.entities[$(event.target).attr('id')];
+		if (sprite) sprite.doClick(event);
+	});
+	
 }
 
 jGame.inherits = function(childCtor, parentCtor) {
@@ -54,69 +76,91 @@ jGame.inherits = function(childCtor, parentCtor) {
 	childCtor.prototype.constructor = childCtor;
 };
 
+jGame.log = function(str) {
+	if (DEBUG) console.log(str);
+}
+
 var UNIT = 'px';
 var TICK = 50;	// tick every 50 milliseconds (20 fps)
 
-jGame.Scene = function(rootElement) {
+jGame.Scene = function(rootElement, game) {
+	this.game = game;
 	this.rootElement = rootElement;
-	this.rootNode = null;	// autocreated when jGame is instantiated
+	this.rootGroup = null;	// autocreated when jGame is instantiated
 	this.callbacks = [];	// functions that run every "tick"
-	this.entities = [];		// contains all sprites & nodes in an associative array by id
-	this.entitiesByClass = [];	// contains lists of sprites & nodes by class name
+	this.entities = {};		// contains all sprites & nodes in an associative array by id
+	this.entitiesByClass = {};	// contains lists of sprites & nodes by class name
 	this.sprites = [];	// list of all sprite objects
-	this.collisionMaps = [];
+	this.collisionMaps = {};
 	
 	this.canvas = $('#canvas')[0];
 	this.canvasContext = this.canvas.getContext('2d');	// used for creating pixel collision maps
 	
 	// function append callbacks to be called on every frame
-	this.onTick = function(fn) {
+	this.tick = function(fn) {
 		this.callbacks.push(fn);
 	};
 	
 	// called every frame
-	this.tick = function() {
+	this.doTick = function() {
 		for (var i=0; i<this.callbacks.length; i++) {
-			this.callbacks[i]();
+			this.callbacks[i].call(this);
 		}
 		var count = this.sprites.length;
 		for (var i=0; i<count; i++) {
 			this.sprites[i].update();
 		}
+		//jGame.log('frame');
 	};
 	
 	// not implemented yet
 	this.buildFromDom = function() {
-		console.log('buildFromDom');
+		jGame.log('buildFromDom');
 	};
 	
 	// only called once to set everything up
 	this.render = function() {
-		//var stack = [];
-		/*for (var i=0; i<this.nodes.length; i++) {
-			stack = stack.concat(this.nodes[i].render());
-		}*/
-		var stack = this.rootNode.render();
+		var stack = this.rootGroup.render();
 		var str = stack.join('');
-		console.log(str);
+		jGame.log(str);
 		this.rootElement.html(str);
 		this.renderCSS();
 	};
 	
 	this.renderCSS = function() {
 		// set up some basic styles
-		var stack = [];
+		var stack = {};
 		stack['.sprite'] = [];
-		stack['.node'] = [];
+		stack['.group'] = [];
 		stack['.sprite']['position'] = 'absolute';
-		stack['.node']['position'] = 'absolute';
+		stack['.group']['position'] = 'absolute';
 		
 		// gather per-object styles from scene tree
 		for (var key in this.entities) {
 			stack = concat(stack, this.entities[key].renderCSS());
 		}
-		console.log(stack);
+		jGame.log(stack);
+		this.addCSSRules(stack);
 		
+		/*var mysheet = document.styleSheets[0];
+		var ruleCount = mysheet.cssRules ? mysheet.cssRules.length : mysheet.rules.length;
+		if (mysheet.insertRule){ //if Firefox (webkit?)
+			for (var key in stack) {
+				var arr = [key, '{'];
+				for (var prop in stack[key]) {
+					arr = arr.concat([prop, ':', stack[key][prop], ';']);
+				}
+				arr.push('}');
+				mysheet.insertRule(arr.join(''), ruleCount-1);
+			}
+		}*/
+		/*else if (mysheet.addRule){ //else if IE
+			mysheet.addRule("b", "background-color: lime");
+		}*/
+
+	};
+	
+	this.addCSSRules = function(stack) {
 		var mysheet = document.styleSheets[0];
 		var ruleCount = mysheet.cssRules ? mysheet.cssRules.length : mysheet.rules.length;
 		if (mysheet.insertRule){ //if Firefox (webkit?)
@@ -132,15 +176,14 @@ jGame.Scene = function(rootElement) {
 		/*else if (mysheet.addRule){ //else if IE
 			mysheet.addRule("b", "background-color: lime");
 		}*/
-
 	};
 	
-	this.addNode = function(id, options) {
+	this.addGroup = function(id, options) {
 		options.scene = this;
-		var node = new jGame.Node(id, options);
+		var node = new jGame.Group(id, options);
 		if (!node.parent) {	// if no parent is specified, parent it under the root node
-			node.parent = this.rootNode;
-			this.rootNode.children.push(node);
+			node.parent = this.rootGroup;
+			this.rootGroup.children.push(node);
 		}
 		this.entities[id] = node;
 		
@@ -166,12 +209,12 @@ jGame.Scene = function(rootElement) {
 		for (var i=0; i<parts.length; i++) {
 			var subparts = parts[i].trim().split(' ');
 			if (subparts.length == 1) {
-				if (subparts[0].indexOf('#') == 0) return this.entities[subparts[0].substr(1)];
+				if (subparts[0].indexOf('#') == 0) return [ this.entities[subparts[0].substr(1)] ];
 				else if (subparts[0].indexOf('.') == 0) return this.entitiesByClass[subparts[0].substr(1)];
 			} else {
 				// need to implement tree filtered searching
 				// also need to implement multi-filtering (ie '.sprite.missile')
-				console.log('tree filtering not implemented yet');
+				jGame.log('tree filtering not implemented yet');
 			}
 		}
 	};
@@ -243,7 +286,7 @@ jGame.PixelMap = function() {
 	this.collide = function(r1, r2, pm2) {
 		if (this.ready) {
 			// 
-			console.log('do these pixel maps collide?');
+			jGame.log('do these pixel maps collide?');
 		} else {
 			return true;
 		}
@@ -288,6 +331,55 @@ jGame.Rectangle = function(x, y, w, h) {
 	}
 };
 
+// movement styles
+jGame.move = {};
+jGame.move.STATIC = 0;
+jGame.move.RANDOM = 2;
+jGame.move.TERRITORIAL = 3;
+jGame.move.CALLBACK = 4;
+
+// collision settings for sprites
+jGame.collide = {};
+jGame.collide.NONBLOCKING = 0;
+jGame.collide.BLOCKING = 1;
+jGame.collide.PLATFORM = 2;
+
+
+
+jGame.Behavior = function(options) {
+	this.gravity = options.gravity,
+	this.speed = options.speed,
+	this.jumpSpeed = options.jumpSpeed,
+	this.jumpFalloff = options.jumpFalloff,
+	this.shield = options.shield,
+	this.damage = options.damage,
+	this.collisions = options.collisions,
+	this.movement = options.movement,
+	this.movementCallback = options.movementCallback,
+	this.territory = options.territory;
+	
+	this.change = function(newb) {
+		var curb = this;
+		return new jGame.Behavior({
+			gravity: newb.gravity || curb.gravity,
+			speed: newb.speed || curb.speed,
+			jumpSpeed: newb.jumpSpeed || curb.jumpSpeed,
+			jumpFalloff: newb.jumpFalloff || curb.jumpFalloff,
+			shield: newb.shield || curb.shield,
+			damage: newb.damage || curb.damage,
+			collisions: newb.collisions || curb.collisions,
+			movement: newb.movement || curb.movement,
+			movementCallback: newb.movementCallback || curb.movementCallback,
+			territory: newb.territory || curb.territory
+		});
+	};
+	
+	this.setMovementCallback = function(fn) {
+		this.movementCallback = fn;
+	}
+	
+}
+
 jGame.Entity = function(id, options) {
 	this.id = id,
 	this.x = options.x || 0,
@@ -297,12 +389,14 @@ jGame.Entity = function(id, options) {
 	this.element = options.element;
 	this.scene = options.scene || this.parent.scene;
 	this.classes = [];
+	this.prevLoc = { x:this.x, y:this.y };
 	
 	this.getIdStr = function() {
 		return '#' + this.id;
 	};
 	
 	this.move = function(x, y) {
+		this.prevLoc = { x:this.x, y:this.y };
 		this.x += x,
 		this.y += y;
 		
@@ -310,13 +404,26 @@ jGame.Entity = function(id, options) {
 	};
 	
 	this.getElement = function() {
-		if (!this.element) this.element = $('#' + this.id);
+		if (!this.element || this.element.length == 0) this.element = $('#' + this.id);
 		return this.element;
 	};
 	
 	this.addClass = function(str) {
 		this.classes.push(str);
 		this.scene.addToClass(this, str);
+		this.updateClasses();
+	};
+	
+	this.getClasses = function() {
+		var classes = this.classes;
+		if (this.state && this.scene.game.states[this.state]) {
+			classes.push(this.scene.game.states[this.state]);
+		}
+		return classes;
+	};
+	
+	this.updateClasses = function() {
+		this.getElement().attr('class', this.getClasses().join(' '));
 	};
 	
 	this.getLocGlobal = function() {
@@ -335,17 +442,17 @@ jGame.Entity = function(id, options) {
 	}
 }
 
-jGame.Node = function(id, options) {
+jGame.Group = function(id, options) {
 	jGame.Entity.call(this, id, options);
 	
 	this.children = [],
 	this.sprites = [];
-	this.addClass('node');
+	this.addClass('group');
 	
 	this.addChild = function(id, options) {
 		options.parent = this;
-		var child = this.scene.addNode(id, options);
-		//console.log(child);
+		var child = this.scene.addGroup(id, options);
+		//jGame.log(child);
 		this.children.push(child);
 		
 		return child;
@@ -360,13 +467,14 @@ jGame.Node = function(id, options) {
 	};
 	
 	this.render = function() {
-		var arr = ['<div id="', this.id, '" class="', this.classes.join(' '), '">'];
+		var arr = ['<div id="', this.id, '" class="', this.getClasses().join(' '), '">'];
 		for (var i=0; i<this.children.length; i++) {
 			arr = arr.concat(this.children[i].render());
 		}
 		for (var i=0; i<this.sprites.length; i++) {
 			arr = arr.concat(this.sprites[i].render());
 		}
+		if (SHOWOBJECTNAMES) arr.push(this.id);
 		arr.push('</div>');
 		return arr;
 	};
@@ -388,7 +496,7 @@ jGame.Node = function(id, options) {
 		return css;
 	};
 };
-jGame.inherits(jGame.Node, jGame.Entity);
+jGame.inherits(jGame.Group, jGame.Entity);
 
 jGame.Sprite = function(id, options) {
 	jGame.Entity.call(this, id, options);
@@ -403,7 +511,56 @@ jGame.Sprite = function(id, options) {
 	this.animation = options.animation;
 	this.gravity = options.gravity || false;
 	this.obstacles = options.obstacles || [];
+	this.behavior = new jGame.Behavior(options.behavior || {});
+	this.state = options.state;
+	this.stateChangeCallbacks = [];
+	this.clickCallbacks = [];
+	this.collideCallbacks = {};
+	this.prevCollided = [];
 	this.addClass('sprite');
+	
+	this.addBehavior = function(options) {
+		this.behavior = new jGame.Behavior(options)
+		jGame.log('add behavior');
+		jGame.log(this.behavior);
+	};
+	
+	this.changeBehavior = function(behavior) {
+		this.behavior = this.behavior.change(behavior);
+		jGame.log('add behavior');
+		jGame.log(this.behavior);
+	};
+	
+	this.setMovementCallback = function(fn) {
+		this.behavior.setMovementCallback(fn);
+	};
+	
+	this.stateChange = function(fn) {
+		this.stateChangeCallbacks.push(fn);
+	};
+	
+	this.changeState = function(state) {
+		var callbacks = this.stateChangeCallbacks;
+		var count = callbacks.length;
+		var prevState = this.state;
+		this.state = state;
+		for (var i=0; i<count; i++) {
+			callbacks[i].call(this, prevState);
+		}
+		this.updateClasses();
+	};
+	
+	this.doClick = function(event) {
+		var callbacks = this.clickCallbacks;
+		var count = callbacks.length;
+		for (var i=0; i<count; i++) {
+			callbacks[i].call(this, event);
+		}
+	};
+	
+	this.click = function(fn) {
+		this.clickCallbacks.push(fn);
+	};
 	
 	this.move = function(x, y) {
 		this.x += x,
@@ -411,7 +568,7 @@ jGame.Sprite = function(id, options) {
 	};
 	
 	this.render = function() {
-		return ['<div id="', id, '" class="', this.classes.join(' '), '"></div>'];
+		return ['<div id="', this.id, '" class="', this.getClasses().join(' '), '">'+ (SHOWOBJECTNAMES ? this.id : '') +'</div>'];
 	};
 	
 	this.renderCSS = function() {
@@ -436,20 +593,35 @@ jGame.Sprite = function(id, options) {
 		return this.animation;
 	};
 	
+	this.changeAnimation = function(animation) {
+		this.animation = animation;
+		this.animation.addToSprite(this);
+	}
+	
 	this.update = function() {
+		var behavior = this.behavior;
+		// make custom movement callbacks
+		if (behavior.movement = jGame.move.CALLBACK && behavior.movementCallback) {
+			behavior.movementCallback.call(this);
+		}
+		
 		// gravity, falling & jumping
-		if (this.gravity) {
+		/*if (this.gravity) {
 			this.y += GRAVITY;
-			var colliders = this.collide(this.obstacles);
-			//console.log(this.obstacles);
+			var colliders = this.testCollide(this.obstacles);
+			//jGame.log(this.obstacles);
 			if (colliders) {
 				var fac = 1;
 				this.y -= GRAVITY;
-				while (!this.collide(colliders)) {
+				while (!this.testCollide(colliders)) {
 					this.y += fac;
 				}
 			}
-		}
+		}*/
+		
+		//jGame.log('update');
+		
+		this.doCollide();
 		
 		// update position
 		this.getElement().css({ top:this.y, left:this.x });
@@ -460,7 +632,45 @@ jGame.Sprite = function(id, options) {
 		}
 	};
 	
-	this.collide = function(sprites) {
+	this.collide = function(str, fn) {
+		this.collideCallbacks[str] = fn;
+	};
+	
+	// maybe I could cache the results of all collisions globally in case there's a request for a duplicate
+	// not sure if that would be more efficient or not
+	// need to figure out how to make collision direction (top, right, bottom, left) be passed through to callbacks
+	// need to add uncollide capabilities!
+	this.doCollide = function() {
+		var prevCollided = this.prevCollided;
+		//console.log(prevCollided);
+		this.prevCollided = [];
+		var callbacks = this.collideCallbacks;
+		for (var key in callbacks) {
+			var sprites = this.scene.find(key);
+			var curCollided = this.testCollide(sprites);
+			
+			// find first collided
+			var firstCollided = subArray(curCollided, prevCollided);
+			firstCollided = firstCollided.length ? firstCollided : false;
+			
+			// find uncollided
+			var uncollided = subArray(prevCollided, curCollided);
+			uncollided = uncollided.length ? uncollided : false;
+			
+			// rest are collided
+			var collided = subArray(curCollided, firstCollided);
+			collided = collided.length ? collided : false;
+			
+			if (firstCollided || collided || uncollided) {
+				callbacks[key].call(this, firstCollided, collided, uncollided);
+			}
+			//console.log(curCollided);
+			//console.log(prevCollided);
+			if (curCollided) this.prevCollided = concat(this.prevCollided, curCollided);
+		}
+	}
+	
+	this.testCollide = function(sprites) {
 		var collided = [];
 		var r1 = this.getRectGlobal();
 		for (var i=0; i<sprites.length; i++) {
@@ -492,7 +702,7 @@ jGame.Sprite = function(id, options) {
 	this.getRectGlobal = function() {
 		var coords = this.getLocGlobal();
 		var rect = new jGame.Rectangle(coords.x, coords.y, this.w, this.h);
-		//console.log(rect);
+		//jGame.log(rect);
 		return rect;
 	};
 	
@@ -507,16 +717,26 @@ jGame.Sprite = function(id, options) {
 };
 jGame.inherits(jGame.Sprite, jGame.Entity);
 
-jGame.Animation = function(sprite, options) {
-	this.sprite = sprite,
+jGame.Animation = function(options) {
+	this.sprite = options.sprite,
+	this.class = options.class,
 	this.image = options.image,
 	this.frames = options.frames,
 	this.distance = options.distance,
 	this.framerate = options.framerate;
-	this.offsetX = this.sprite.offsetX;
-	this.offsetY = this.sprite.offsetY;
+	this.offsetX = options.offsetX || 0;
+	this.offsetY = options.offsetY || 0;
 	this.nextUpdate = 0;
 	if (!this.image) this.image = this.sprite.image;
+	
+	// maybe make this use css rules later?
+	this.addToSprite = function(sprite) {
+		this.sprite = sprite;
+		this.sprite.getElement().css({
+			'background-position': '-'+ this.offsetX +'px -'+ this.offsetY +'px',
+			'background-image': this.image
+		});
+	};
 	
 	this.update = function() {
 		if (this.nextUpdate <=0) {
@@ -529,9 +749,9 @@ jGame.Animation = function(sprite, options) {
 			this.nextUpdate -= FRAMERATE;
 		}
 	};
-	if (this.sprite.pixelCollision && this.image) {
+	/*if (this.sprite.pixelCollision && this.image) {
 		this.sprite.scene.addCollisionMap(this.image, this.sprite.pixelCollisionFactor);
-	}
+	}*/
 };
 
 // associative array concatination
@@ -540,6 +760,28 @@ function concat(arr1, arr2) {
 		arr1[key] = arr2[key];
 	}
 	return arr1;
+}
+
+// subtract arr2 from arr1
+function subArray(arr1, arr2) {
+	var sub = [];
+	var count1 = arr1.length;
+	var count2 = arr2.length;
+	for (var i=0; i<count1; i++) {
+		var item = arr1[i];
+		if (!inArray(item, arr2)) sub.push(item);
+	}
+	return sub;
+}
+
+function inArray(item, array) {
+	var count = array.length;
+	for (var i=0; i<count; i++) {
+		if (item === array[i]) {
+			return true;
+		}
+	}
+	return false;
 }
 
 String.prototype.trim = function () {
