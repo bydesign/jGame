@@ -93,27 +93,29 @@ $(document).ready(function() {
 		if (firstCollided) {
 			console.log('first collided');
 			this.changeAnimation(redAnimation);
+			
+			// TOP = 0, RIGHT = 1, BOTTOM = 2, LEFT = 3;
+			this.getCollideDirection(firstCollided[0]);
 		}
 	});
-	player.near('.obstacle', {top:20, right:20, bottom:20, left:20}, function(near, stillNear, notNear) {
+	/*player.near('.obstacle', {top:20, right:20, bottom:20, left:20}, function(near, stillNear, notNear) {
 		if (near) {
 			console.log('entering the neighborhood');
 			this.fadeOut();
 		}
-		if (stillNear) console.log('still hangin out');
+		//if (stillNear) console.log('still hangin out');
 		if (notNear) {
 			console.log('out of here!');
 			this.fadeIn();
 		}
-	});
+	});*/
 	player.click(function(event) {
 		console.log(this);
 		console.log(event);
 		this.changeState(15);
 	});
 	player.stateChange(function(prevState) {
-		console.log(prevState);
-		console.log(this.state);
+		console.log('state change');
 	});
 	player.changeAnimation(blueAnimation);
 	player.addClass('player');

@@ -16,6 +16,9 @@ var GRAVITY = 7;
 var DEBUG = true;
 var SHOWOBJECTNAMES = DEBUG;
 
+// shortcut to save lookup time
+var abs = Math.abs;
+
 function jGame(rootElement, options) {
 	this.scene = new jGame.Scene(rootElement, this);
 	this.scene.rootGroup = new jGame.Group('root', {x:0, y:0, z:0, scene:this.scene});
@@ -344,10 +347,10 @@ var TOP = 0,
 	BOTTOM = 2,
 	LEFT = 3;
 	
-jGame.Collision = function(side, sprite) {
+/*jGame.Collision = function(side, sprite) {
 	this.side = side;
 	this.sprite = sprite;
-};
+};*/
 
 
 jGame.Behavior = function(options) {
@@ -394,6 +397,7 @@ jGame.Entity = function(id, options) {
 	this.scene = options.scene || this.parent.scene;
 	this.classes = [];
 	this.prevLoc = { x:this.x, y:this.y };
+	this.hasMoved = false;
 	
 	this.getIdStr = function() {
 		return '#' + this.id;
@@ -430,6 +434,13 @@ jGame.Entity = function(id, options) {
 		this.getElement().attr('class', this.getClasses().join(' '));
 	};
 	
+	this.move = function(loc) {
+		if (loc.x) this.x += loc.x;
+		if (loc.y) this.y += loc.y;
+		if (loc.z) this.z += loc.z;
+		this.hasMoved = true;
+	};
+	
 	this.getLocGlobal = function() {
 		if (this.parent) {
 			var coords = this.parent.getLocGlobal();
@@ -442,43 +453,43 @@ jGame.Entity = function(id, options) {
 	// jquery effects functions
 	// is there a way to do this automatically?
 	this.show = function(duration, callback) {
-		this.element.show(duration, callback);
+		this.getElement().show(duration, callback);
 	};
 	
 	this.hide = function(duration, callback) {
-		this.element.hide(duration, callback);
+		this.getElement().hide(duration, callback);
 	};
 	
 	this.fadeIn = function(duration, callback) {
-		this.element.fadeIn(duration, callback);
+		this.getElement().fadeIn(duration, callback);
 	};
 	
 	this.fadeOut = function(duration, callback) {
-		this.element.fadeOut(duration, callback);
+		this.getElement().fadeOut(duration, callback);
 	};
 	
 	this.slideDown = function(duration, callback) {
-		this.element.slideDown(duration, callback);
+		this.getElement().slideDown(duration, callback);
 	};
 	
 	this.slideUp = function(duration, callback) {
-		this.element.slideUp(duration, callback);
+		this.getElement().slideUp(duration, callback);
 	};
 	
 	this.slideToggle = function(duration, callback) {
-		this.element.slideToggle(duration, callback);
+		this.getElement().slideToggle(duration, callback);
 	};
 	
 	this.toggle = function(handler1, handler2, handler3) {
-		this.element.toggle(handler1, handler2, handler3);
+		this.getElement().toggle(handler1, handler2, handler3);
 	};
 	
 	this.animate = function(properties, duration, easing, callback) {
-		this.element.animate(properties, duration, easing, callback);
+		this.getElement().animate(properties, duration, easing, callback);
 	};
 	
 	this.stop = function(clearQueue, jumpToEnd) {
-		this.element.stop(clearQueue, jumpToEnd);
+		this.getElement().stop(clearQueue, jumpToEnd);
 	};
 	
 	// classes options
@@ -542,6 +553,20 @@ jGame.Group = function(id, options) {
 		}
 		return css;
 	};
+	
+	this.update = function() {
+		var css;
+		if (this.hasMoved) {
+			css = {};
+			css.left = this.x;
+			css.top = this.y;
+		}
+		
+		// update position
+		if (css) this.getElement().css(css);
+		
+		this.hasMoved = false;
+	};
 };
 jGame.inherits(jGame.Group, jGame.Entity);
 
@@ -553,6 +578,10 @@ jGame.Sprite = function(id, options) {
 	this.image = options.image,
 	this.w = options.w,
 	this.h = options.h,
+	this.halfWidth;
+	this.halfHeight;
+	this.heightWidthRatio;
+	this.widthHeightRatio;
 	this.offsetX = options.offsetX || 0,
 	this.offsetY = options.offsetY || 0,
 	this.animation = options.animation;
@@ -565,6 +594,7 @@ jGame.Sprite = function(id, options) {
 	this.collideCallbacks = {};
 	this.prevCollided = [];
 	this.addClass('sprite');
+	this.hasResized = false;
 	
 	this.addBehavior = function(options) {
 		this.behavior = new jGame.Behavior(options)
@@ -609,10 +639,35 @@ jGame.Sprite = function(id, options) {
 		}
 	};
 	
-	this.move = function(loc) {
-		if (loc.x) this.x += loc.x;
-		if (loc.y) this.y += loc.y;
-		if (loc.z) this.z += loc.z;
+	this.resize = function(size) {
+		if (size.width)	this.w = size.width;
+		if (size.height) this.h = size.height;
+		this.recalcSizeValues();
+		this.hasResized = true;
+	};
+	
+	this.recalcSizeValues = function() {
+		this.halfHeight = Math.round(this.w / 2);
+		this.halfHeight = Math.round(this.w / 2);
+		
+		// size ratio
+		this.heightWidthRatio = this.h / this.w;
+		this.widthHeightRatio = 1.0 - this.heightWidthRatio || 1.0;
+	};
+	this.recalcSizeValues();
+	
+	this.recalcCenter = function(x, y) {
+		if (!x) x = this.x;
+		if (!y) y = this.y;
+		this.centerX = x + (this.w/2);
+		this.centerY = y + (this.h/2);
+		
+		return {x:this.centerX, y:this.centerY};
+	};
+	
+	this.getCenterGlobal = function() {
+		var coords = this.getLocGlobal();
+		return this.recalcCenter(coords.x, coords.y);
 	};
 	
 	this.render = function() {
@@ -644,40 +699,49 @@ jGame.Sprite = function(id, options) {
 	this.changeAnimation = function(animation) {
 		this.animation = animation;
 		this.animation.addToSprite(this);
-	}
+	};
 	
 	this.update = function() {
 		var behavior = this.behavior;
 		// make custom movement callbacks
+		// should these return a css object for dom transform?
+		// should these update object properties themselves?
 		if (behavior.movement = jGame.move.CALLBACK && behavior.movementCallback) {
 			behavior.movementCallback.call(this);
 		}
 		
-		// gravity, falling & jumping
-		/*if (this.gravity) {
-			this.y += GRAVITY;
-			var colliders = this.testCollide(this.obstacles);
-			//jGame.log(this.obstacles);
-			if (colliders) {
-				var fac = 1;
-				this.y -= GRAVITY;
-				while (!this.testCollide(colliders)) {
-					this.y += fac;
-				}
-			}
-		}*/
+		if (this.collideCallbacks) this.doCollide();
 		
-		//jGame.log('update');
-		
-		this.doCollide();
-		
-		// update position
-		this.getElement().css({ top:this.y, left:this.x });
-		
-		// update animation
-		if (this.animation) {
-			this.animation.update();
+		// has sprite moved?
+		var css;
+		if (this.hasMoved) {
+			css = {};
+			css.left = this.x;
+			css.top = this.y;
 		}
+		
+		// has sprite changed size?
+		if (this.hasResized) {
+			if (!css) css = {};
+			css.width = this.w;
+			css.height = this.h;
+		}
+		
+		// has animation frame advanced?
+		var animation;
+		if (this.animation) {
+			var bpos = this.animation.update();
+			if (bpos) {
+				if (!css) css = {};
+				css.backgroundPosition = bpos;
+			}
+		}
+		
+		// update any changed dom properties
+		if (css) this.getElement().css(css);
+		
+		this.hasMoved = false;
+		this.hasResized = false;
 	};
 	
 	// uses same code as collide because it's basically the same logic
@@ -736,16 +800,40 @@ jGame.Sprite = function(id, options) {
 			
 			// test collision
 			if (r1.collide(r2)) {
-				if (this.pixelCollision) {
+				collided.push(sprite);
+				// re-enable this once pixel collision is working again
+				/*if (this.pixelCollision) {
 					if (this.pixelCollide(r1, r2, sprite)) collided.push(sprite);
 				} else {
 					collided.push(sprite);
-				}
+				}*/
 			}
 		}
 		//return collided;
 		if (collided.length) return collided;
 		else return false;	// this makes if testing easier for the user
+	};
+	
+	this.getCollideDirection = function(sprite) {
+		var center = this.getCenterGlobal();
+		var spriteCenter = sprite.getCenterGlobal();
+		
+		var x1 = center.x,
+			y1 = center.y,
+			x2 = spriteCenter.x,
+			y2 = spriteCenter.y;
+			
+		// scale x/y difference based on h/w ratio
+		var diff = {
+			x: (center.x-spriteCenter.x) * this.heightWidthRatio * sprite.heightWidthRatio,
+			y: (center.y-spriteCenter.y) * this.widthHeightRatio * sprite.widthHeightRatio
+		};
+		
+		var xDir = (diff.x > 0) ? RIGHT : LEFT;
+		var yDir = (diff.y > 0) ? BOTTOM : TOP;
+		var direction = (abs(diff.x) > abs(diff.y)) ? xDir : yDir;
+		
+		return direction;
 	};
 	
 	// the intersection function still needs to be finished
@@ -799,10 +887,12 @@ jGame.Animation = function(options) {
 			var x = (this.offsetX + this.distance) % (this.distance * this.frames);
 			this.offsetX = x;
 			var y = this.offsetY;
-			this.sprite.getElement().css('background-position', '-'+ x +'px -'+ y +'px');
+			//this.sprite.getElement().css('background-position', '-'+ x +'px -'+ y +'px');
 			this.nextUpdate = this.framerate;
+			return '-'+ x +'px -'+ y +'px';
 		} else {
 			this.nextUpdate -= FRAMERATE;
+			return false;
 		}
 	};
 	/*if (this.sprite.pixelCollision && this.image) {
