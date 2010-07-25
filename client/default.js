@@ -81,18 +81,29 @@ $(document).ready(function() {
 		framerate:120,
 		offsetY:24,
 	});
-	player.collide('.obstacle', function(firstCollided, collided, uncollided) {
+	player.collide('.obstacle', function(firstCollided, colliding, uncollided) {
 		// handle uncollided first in case it uncollides and firstcollides on the same frame
 		if (uncollided) {
 			console.log('uncollided');
 			this.changeAnimation(blueAnimation);
 		}
-		/*if (collided) {
+		/*if (colliding) {
 			console.log('continuing collision');
 		}*/
 		if (firstCollided) {
 			console.log('first collided');
 			this.changeAnimation(redAnimation);
+		}
+	});
+	player.near('.obstacle', {top:20, right:20, bottom:20, left:20}, function(near, stillNear, notNear) {
+		if (near) {
+			console.log('entering the neighborhood');
+			this.fadeOut();
+		}
+		if (stillNear) console.log('still hangin out');
+		if (notNear) {
+			console.log('out of here!');
+			this.fadeIn();
 		}
 	});
 	player.click(function(event) {
@@ -121,19 +132,19 @@ $(document).ready(function() {
 	// do this every frame
 	scene.tick(function() {
 		if(game.keyTracker[WKEY] || game.keyTracker[UP]){ //this is up! (w)
-			player.move(0, PLAYER_SPEED*-1)
+			player.move({x:0, y:PLAYER_SPEED*-1})
 		}
 		if(game.keyTracker[SKEY] || game.keyTracker[DOWN]){ //this is down! (s)
-			player.move(0, PLAYER_SPEED)
+			player.move({x:0, y:PLAYER_SPEED})
 		}
 		if(game.keyTracker[AKEY] || game.keyTracker[LEFT]){ //this is left! (a)
-			player.move(PLAYER_SPEED*-1, 0);
+			player.move({x:PLAYER_SPEED*-1, y:0});
 		}
 		if(game.keyTracker[DKEY] || game.keyTracker[RIGHT]){ //this is right! (d)
-			player.move(PLAYER_SPEED, 0);
+			player.move({x:PLAYER_SPEED, y:0});
 		}
 		/*if(game.keyTracker[SPACE]){// || game.keyTracker[UP]){ //this is right! (space)
-			player.move(0, -JUMP_SPEED);
+			player.move({x:0, y:-JUMP_SPEED});
 		}*/
 		//console.log('tick');
 	});

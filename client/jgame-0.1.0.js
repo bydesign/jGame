@@ -10,12 +10,6 @@ var UP = 38;
 var RIGHT = 39;
 var DOWN = 40;
 
-// directions
-var TOP = 0,
-	RIGHT = 1,
-	BOTTOM = 2,
-	LEFT = 3;
-
 var FRAMERATE = 33;	// framerate in milliseconds (50=20fps, 33=30fps)
 var GRAVITY = 7;
 
@@ -344,6 +338,16 @@ jGame.collide.NONBLOCKING = 0;
 jGame.collide.BLOCKING = 1;
 jGame.collide.PLATFORM = 2;
 
+// directions
+var TOP = 0,
+	RIGHT = 1,
+	BOTTOM = 2,
+	LEFT = 3;
+	
+jGame.Collision = function(side, sprite) {
+	this.side = side;
+	this.sprite = sprite;
+};
 
 
 jGame.Behavior = function(options) {
@@ -435,6 +439,49 @@ jGame.Entity = function(id, options) {
 		}
 	};
 	
+	// jquery effects functions
+	// is there a way to do this automatically?
+	this.show = function(duration, callback) {
+		this.element.show(duration, callback);
+	};
+	
+	this.hide = function(duration, callback) {
+		this.element.hide(duration, callback);
+	};
+	
+	this.fadeIn = function(duration, callback) {
+		this.element.fadeIn(duration, callback);
+	};
+	
+	this.fadeOut = function(duration, callback) {
+		this.element.fadeOut(duration, callback);
+	};
+	
+	this.slideDown = function(duration, callback) {
+		this.element.slideDown(duration, callback);
+	};
+	
+	this.slideUp = function(duration, callback) {
+		this.element.slideUp(duration, callback);
+	};
+	
+	this.slideToggle = function(duration, callback) {
+		this.element.slideToggle(duration, callback);
+	};
+	
+	this.toggle = function(handler1, handler2, handler3) {
+		this.element.toggle(handler1, handler2, handler3);
+	};
+	
+	this.animate = function(properties, duration, easing, callback) {
+		this.element.animate(properties, duration, easing, callback);
+	};
+	
+	this.stop = function(clearQueue, jumpToEnd) {
+		this.element.stop(clearQueue, jumpToEnd);
+	};
+	
+	// classes options
 	if (options.classes) {
 		for (var i=0; i<options.classes.length; i++) {
 			this.addClass(options.classes[i]);;
@@ -550,6 +597,10 @@ jGame.Sprite = function(id, options) {
 		this.updateClasses();
 	};
 	
+	this.click = function(fn) {
+		this.clickCallbacks.push(fn);
+	};
+	
 	this.doClick = function(event) {
 		var callbacks = this.clickCallbacks;
 		var count = callbacks.length;
@@ -558,13 +609,10 @@ jGame.Sprite = function(id, options) {
 		}
 	};
 	
-	this.click = function(fn) {
-		this.clickCallbacks.push(fn);
-	};
-	
-	this.move = function(x, y) {
-		this.x += x,
-		this.y += y;
+	this.move = function(loc) {
+		if (loc.x) this.x += loc.x;
+		if (loc.y) this.y += loc.y;
+		if (loc.z) this.z += loc.z;
 	};
 	
 	this.render = function() {
@@ -632,8 +680,14 @@ jGame.Sprite = function(id, options) {
 		}
 	};
 	
+	// uses same code as collide because it's basically the same logic
+	// need to add circular radius for near test (rectangular rigth now)
+	this.near = function(str, dist, fn) {
+		this.collideCallbacks[str] = {fn: fn, dist:dist};
+	};
+	
 	this.collide = function(str, fn) {
-		this.collideCallbacks[str] = fn;
+		this.collideCallbacks[str] = {fn:fn, dist:{top:0, right:0, bottom:0, left:0} };
 	};
 	
 	// maybe I could cache the results of all collisions globally in case there's a request for a duplicate
@@ -642,12 +696,12 @@ jGame.Sprite = function(id, options) {
 	// need to add uncollide capabilities!
 	this.doCollide = function() {
 		var prevCollided = this.prevCollided;
-		//console.log(prevCollided);
 		this.prevCollided = [];
 		var callbacks = this.collideCallbacks;
 		for (var key in callbacks) {
+			var callback = callbacks[key];
 			var sprites = this.scene.find(key);
-			var curCollided = this.testCollide(sprites);
+			var curCollided = this.testCollide(sprites, callback.dist);
 			
 			// find first collided
 			var firstCollided = subArray(curCollided, prevCollided);
@@ -662,18 +716,20 @@ jGame.Sprite = function(id, options) {
 			collided = collided.length ? collided : false;
 			
 			if (firstCollided || collided || uncollided) {
-				callbacks[key].call(this, firstCollided, collided, uncollided);
+				callback.fn.call(this, firstCollided, collided, uncollided);
 			}
-			//console.log(curCollided);
-			//console.log(prevCollided);
 			if (curCollided) this.prevCollided = concat(this.prevCollided, curCollided);
 		}
 	}
 	
-	this.testCollide = function(sprites) {
+	this.testCollide = function(sprites, dist) {
 		var collided = [];
 		var r1 = this.getRectGlobal();
-		for (var i=0; i<sprites.length; i++) {
+		r1.x -= dist.left;
+		r1.y -= dist.top;
+		r1.w += dist.right + dist.left;
+		r1.h += dist.bottom + dist.top;
+		for (var i=0, len=sprites.length; i<len; i++) {
 			// get rectangle
 			var sprite = sprites[i];
 			var r2 = sprite.getRectGlobal();
