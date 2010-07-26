@@ -11,7 +11,7 @@ var RIGHT = 39;
 var DOWN = 40;
 
 var FRAMERATE = 33;	// framerate in milliseconds (50=20fps, 33=30fps)
-var GRAVITY = 7;
+//var GRAVITY = 10;
 
 var DEBUG = true;
 var SHOWOBJECTNAMES = DEBUG;
@@ -89,6 +89,7 @@ jGame.Scene = function(rootElement, game) {
 	this.entitiesByClass = {};	// contains lists of sprites & nodes by class name
 	this.sprites = [];	// list of all sprite objects
 	this.collisionMaps = {};
+	this.gravity = 10;
 	
 	this.canvas = $('#canvas')[0];
 	this.canvasContext = this.canvas.getContext('2d');	// used for creating pixel collision maps
@@ -331,9 +332,11 @@ jGame.Rectangle = function(x, y, w, h) {
 // movement styles
 jGame.move = {};
 jGame.move.STATIC = 0;
-jGame.move.RANDOM = 2;
-jGame.move.TERRITORIAL = 3;
-jGame.move.CALLBACK = 4;
+jGame.move.DIRECTION = 1;
+jGame.move.OSCILLATE = 2
+jGame.move.RANDOM = 3;
+jGame.move.TERRITORIAL = 4;
+jGame.move.CALLBACK = 5;
 
 // collision settings for sprites
 jGame.collide = {};
@@ -362,11 +365,15 @@ jGame.Behavior = function(options) {
 	this.damage = options.damage,
 	this.collisions = options.collisions,
 	this.movement = options.movement,
+	this.movementOptions = options.movementOptions,
 	this.movementCallback = options.movementCallback,
 	this.territory = options.territory;
+	this.floor = options.floor;
 	
 	this.change = function(newb) {
-		var curb = this;
+		/*var curb = this;
+		jGame.log(newb);
+		jGame.log(curb);
 		return new jGame.Behavior({
 			gravity: newb.gravity || curb.gravity,
 			speed: newb.speed || curb.speed,
@@ -376,13 +383,28 @@ jGame.Behavior = function(options) {
 			damage: newb.damage || curb.damage,
 			collisions: newb.collisions || curb.collisions,
 			movement: newb.movement || curb.movement,
+			movementOptions: newb.movementOptions || curb.movementOptions,
 			movementCallback: newb.movementCallback || curb.movementCallback,
 			territory: newb.territory || curb.territory
-		});
+		});*/
+		
+		if (newb.gravity) this.gravity = newb.gravity;
+		if (newb.speed) this.speed = newb.speed;
+		if (newb.jumpSpeed) this.jumpSpeed = newb.jumpSpeed;
+		if (newb.jumpFalloff) this.jumpFalloff = newb.jumpFalloff;
+		if (newb.shield) this.shield = newb.shield;
+		if (newb.damage) this.damage = newb.damage;
+		if (newb.collisions) this.collisions = newb.collisions;
+		if (newb.movement) this.movement = newb.movement;
+		if (newb.movementOptions) this.movementOptions = newb.movementOptions;
+		if (newb.movementCallback) this.movementCallback = newb.movementCallback;
+		if (newb.territory) this.territory = newb.territory;
+		if (newb.floor) this.floor = newb.floor;
+		
 	};
 	
 	this.setMovementCallback = function(fn) {
-		this.movementCallback = fn;
+		this.movementCallback = fn; 
 	}
 	
 }
@@ -403,13 +425,13 @@ jGame.Entity = function(id, options) {
 		return '#' + this.id;
 	};
 	
-	this.move = function(x, y) {
+	/*this.move = function(x, y) {
 		this.prevLoc = { x:this.x, y:this.y };
 		this.x += x,
 		this.y += y;
 		
 		this.getElement().css({ top:this.y, left:this.x });
-	};
+	};*/
 	
 	this.getElement = function() {
 		if (!this.element || this.element.length == 0) this.element = $('#' + this.id);
@@ -586,7 +608,7 @@ jGame.Sprite = function(id, options) {
 	this.offsetY = options.offsetY || 0,
 	this.animation = options.animation;
 	this.gravity = options.gravity || false;
-	this.obstacles = options.obstacles || [];
+	//this.obstacles = options.obstacles || [];
 	this.behavior = new jGame.Behavior(options.behavior || {});
 	this.state = options.state;
 	this.stateChangeCallbacks = [];
@@ -595,6 +617,7 @@ jGame.Sprite = function(id, options) {
 	this.prevCollided = [];
 	this.addClass('sprite');
 	this.hasResized = false;
+	this.rectGlobal;
 	
 	this.addBehavior = function(options) {
 		this.behavior = new jGame.Behavior(options)
@@ -702,6 +725,9 @@ jGame.Sprite = function(id, options) {
 	};
 	
 	this.update = function() {
+		// handle default behaviors here
+		this.doBehaviors();
+		
 		var behavior = this.behavior;
 		// make custom movement callbacks
 		// should these return a css object for dom transform?
@@ -740,8 +766,55 @@ jGame.Sprite = function(id, options) {
 		// update any changed dom properties
 		if (css) this.getElement().css(css);
 		
+		// get ready for next frame
 		this.hasMoved = false;
 		this.hasResized = false;
+		this.prevLoc = { x:this.x, y:this.y, z:this.z };
+		this.rectGlobal = null;
+	};
+	
+	this.doBehaviors = function() {
+		var behavior = this.behavior;
+		// handle gravity effects
+		if (behavior.gravity) {
+			//jGame.log(Math.round(this.scene.gravity * behavior.gravity));
+			var rect = this.getRectGlobal();
+			var bot = rect.y + rect.h;
+			var change = Math.round(this.scene.gravity * behavior.gravity);
+			if (bot + change < behavior.floor) {
+				this.move({ y:change } );
+			}
+		}
+		
+		// handle movement effects
+		//jGame.log(behavior.movement);
+		/*if (behavior.movement === jGame.move.OSCILLATE) {
+			jGame.log('do oscillate');
+			var loop = behavior.movementOptions.loop;
+			var locs = behavior.movementOptions.locations;
+		}*/
+		
+		// handle collision effects
+		var collisions = behavior.collisions;
+		for (var key in collisions) {
+			var sprites = this.scene.find(key);
+			if (collisions[key] === jGame.collide.PLATFORM && this.y > this.prevLoc.y) {
+				var colliding = false;
+				var goalY = this.y;
+				this.y = this.prevLoc.y;
+				while (!colliding && this.y < goalY) {
+					this.y += 1;
+					var collided = this.testCollide(sprites, {top:0, right:0, bottom:0, left:0});
+					for (var i=0, len=collided.length; i<len; i++) {
+						if (this.getCollideDirection(collided[i]) === TOP) {
+							colliding = true;
+							this.y -= 1;
+							break;
+						}
+					}
+				}
+			}
+		}
 	};
 	
 	// uses same code as collide because it's basically the same logic
@@ -844,10 +917,11 @@ jGame.Sprite = function(id, options) {
 	};
 	
 	this.getRectGlobal = function() {
-		var coords = this.getLocGlobal();
-		var rect = new jGame.Rectangle(coords.x, coords.y, this.w, this.h);
-		//jGame.log(rect);
-		return rect;
+		//if (!this.rectGlobal) {
+			var coords = this.getLocGlobal();
+			this.rectGlobal = new jGame.Rectangle(coords.x, coords.y, this.w, this.h);
+		//}
+		return this.rectGlobal;
 	};
 	
 	this.setObstacles = function(obstacles) {

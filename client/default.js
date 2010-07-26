@@ -22,8 +22,20 @@ $(document).ready(function() {
 		var block = obstacles.addSprite('obstacle'+i, {x:x, y:y, w:w, h:h, classes:['obstacle']});
 	}
 	
+	var oscillate = scene.find('#obstacle7')[0];
+	oscillate.behavior.change({
+		movement: jGame.move.OSCILLATE,
+		movementOptions: {
+			loop:true,
+			locations: [
+				{ y:25 },
+				{ y:250 } ]
+		},
+		speed: 7
+	});
+	
 	// main player state
-	var REST = 0
+	var REST = 0;
 	var WALKE = 1;
 	var WALKW = 2;
 	var FALL = 3;
@@ -53,14 +65,15 @@ $(document).ready(function() {
 		//gravity: true,
 		//obstacles: scene.find('.obstacle'),
 		behavior: {
-			gravity: 7, // number of pixels per frame (not a good method)
-			speed: 7,
-			jumpSpeed: 7,
-			jumpFalloff: 0.75,
-			shield: 1.0,
-			damage: 1.0,
-			//collisions: { '.classname':'string' },
+			gravity: 0.7,	// multiplied by the overall gravity strength of scene
+			speed: 7, // number of pixels per frame (not a good method)
+			jumpSpeed: 7,	// not implemented
+			jumpFalloff: 0.75,	// not implemented
+			shield: 1.0,	// not implemented
+			damage: 1.0,	// not implemented
+			collisions: { '.obstacle':jGame.collide.PLATFORM },
 			movement: jGame.move.STATIC,
+			floor: $root.height(),
 			//movementCallback: ,
 			//territory: 
 		}
@@ -98,17 +111,17 @@ $(document).ready(function() {
 			this.getCollideDirection(firstCollided[0]);
 		}
 	});
-	/*player.near('.obstacle', {top:20, right:20, bottom:20, left:20}, function(near, stillNear, notNear) {
+	player.near('#collideSprite', {top:50, right:50, bottom:50, left:50}, function(near, stillNear, notNear) {
 		if (near) {
 			console.log('entering the neighborhood');
-			this.fadeOut();
+			near[0].fadeOut('slow');
 		}
 		//if (stillNear) console.log('still hangin out');
 		if (notNear) {
 			console.log('out of here!');
-			this.fadeIn();
+			notNear[0].fadeIn('slow');
 		}
-	});*/
+	});
 	player.click(function(event) {
 		console.log(this);
 		console.log(event);
@@ -132,18 +145,19 @@ $(document).ready(function() {
 	//console.log(obstacleSprites);
 	
 	// do this every frame
+	// called before behavior logic, sprite updates, and dom changes
 	scene.tick(function() {
 		if(game.keyTracker[WKEY] || game.keyTracker[UP]){ //this is up! (w)
-			player.move({x:0, y:PLAYER_SPEED*-1})
+			player.move({y:PLAYER_SPEED*-1.7})
 		}
 		if(game.keyTracker[SKEY] || game.keyTracker[DOWN]){ //this is down! (s)
-			player.move({x:0, y:PLAYER_SPEED})
+			player.move({y:PLAYER_SPEED})
 		}
 		if(game.keyTracker[AKEY] || game.keyTracker[LEFT]){ //this is left! (a)
-			player.move({x:PLAYER_SPEED*-1, y:0});
+			player.move({x:PLAYER_SPEED*-1});
 		}
 		if(game.keyTracker[DKEY] || game.keyTracker[RIGHT]){ //this is right! (d)
-			player.move({x:PLAYER_SPEED, y:0});
+			player.move({x:PLAYER_SPEED});
 		}
 		/*if(game.keyTracker[SPACE]){// || game.keyTracker[UP]){ //this is right! (space)
 			player.move({x:0, y:-JUMP_SPEED});
